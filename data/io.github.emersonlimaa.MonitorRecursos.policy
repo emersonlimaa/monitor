@@ -4,10 +4,10 @@
  "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
 <policyconfig>
   <vendor>Monitor de Recursos</vendor>
-  <vendor_url>https://github.com/merz/monitor</vendor_url>
-  <icon_name>io.github.merz.MonitorRecursos</icon_name>
+  <vendor_url>https://github.com/emersonlimaa/monitor</vendor_url>
+  <icon_name>io.github.emersonlimaa.MonitorRecursos</icon_name>
 
-  <action id="io.github.merz.MonitorRecursos.manage">
+  <action id="io.github.emersonlimaa.MonitorRecursos.manage">
     <description>Gerenciar programas e espaço em disco</description>
     <description xml:lang="pt_BR">Gerenciar programas e espaço em disco</description>
     <description xml:lang="en">Manage applications and disk space</description>

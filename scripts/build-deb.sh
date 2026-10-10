@@ -9,8 +9,17 @@ set -euo pipefail
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PACOTE="monitor-recursos"
 VERSAO="$(sed -n 's/^VERSION = "\(.*\)"/\1/p' "$RAIZ/src/monitor_recursos/util.py")"
-APPID="io.github.merz.MonitorRecursos"
-MANTENEDOR="${DEB_MAINTAINER:-Emerson Lima <uaimedsocial@gmail.com>}"
+APPID="io.github.emersonlimaa.MonitorRecursos"
+# Mantenedor: variável de ambiente, senão a identidade do git, senão genérico.
+GIT_NOME="$(git -C "$RAIZ" config user.name 2>/dev/null || true)"
+GIT_EMAIL="$(git -C "$RAIZ" config user.email 2>/dev/null || true)"
+if [ -n "${DEB_MAINTAINER:-}" ]; then
+  MANTENEDOR="$DEB_MAINTAINER"
+elif [ -n "$GIT_NOME" ] && [ -n "$GIT_EMAIL" ]; then
+  MANTENEDOR="$GIT_NOME <$GIT_EMAIL>"
+else
+  MANTENEDOR="Monitor de Recursos <nobody@localhost>"
+fi
 
 BUILD="$RAIZ/build/$PACOTE"
 DIST="$RAIZ/dist"

@@ -279,7 +279,7 @@ class MonitorApp(Adw.Application):
             comments="Mostra os recursos do computador, o que ocupa o disco e "
                      "desinstala programas sem precisar de terminal.",
             license_type=Gtk.License.MIT_X11,
-            website="https://github.com/merz/monitor",
+            website="https://github.com/emersonlimaa/monitor",
         )
         dialog.present(self.window)
 

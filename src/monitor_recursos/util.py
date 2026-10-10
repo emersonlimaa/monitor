@@ -6,7 +6,7 @@ import os
 import subprocess
 import time
 
-APP_ID = "io.github.merz.MonitorRecursos"
+APP_ID = "io.github.emersonlimaa.MonitorRecursos"
 APP_NAME = "Monitor de Recursos"
 VERSION = "1.0.0"
 

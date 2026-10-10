@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.github.merz.MonitorRecursos</id>
+  <id>io.github.emersonlimaa.MonitorRecursos</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
   <name>Monitor de Recursos</name>
@@ -19,7 +19,7 @@
       confere a lista de pacotes protegidos antes de remover qualquer coisa.
     </p>
   </description>
-  <launchable type="desktop-id">io.github.merz.MonitorRecursos.desktop</launchable>
+  <launchable type="desktop-id">io.github.emersonlimaa.MonitorRecursos.desktop</launchable>
   <categories>
     <category>System</category>
     <category>Monitor</category>
