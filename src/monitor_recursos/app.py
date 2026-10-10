@@ -14,6 +14,7 @@ from .ui import widgets as w
 from .ui.apps import AppsPage
 from .ui.cleanup import CleanupPage
 from .ui.dashboard import DashboardPage
+from .ui.hardware import HardwarePage
 from .ui.storage import StoragePage
 from .util import APP_ID, APP_NAME, VERSION
 
@@ -55,11 +56,14 @@ class MonitorWindow(Adw.ApplicationWindow):
 
         self.stack = Adw.ViewStack()
         self.dashboard = DashboardPage(self)
+        self.hardware = HardwarePage(self)
         self.apps = AppsPage(self)
         self.storage = StoragePage(self)
         self.cleanup = CleanupPage(self)
         self.stack.add_titled_with_icon(
             self.dashboard, "recursos", "Recursos", "speedometer-symbolic")
+        self.stack.add_titled_with_icon(
+            self.hardware, "pecas", "Componentes", "computer-symbolic")
         self.stack.add_titled_with_icon(
             self.apps, "apps", "Aplicativos", "view-grid-symbolic")
         self.stack.add_titled_with_icon(
@@ -85,7 +89,7 @@ class MonitorWindow(Adw.ApplicationWindow):
         view.add_bottom_bar(switcher_bar)
 
         breakpoint_ = Adw.Breakpoint.new(
-            Adw.BreakpointCondition.parse("max-width: 640px"))
+            Adw.BreakpointCondition.parse("max-width: 800px"))
         breakpoint_.add_setter(switcher_bar, "reveal", True)
         breakpoint_.add_setter(switcher, "visible", False)
         self.add_breakpoint(breakpoint_)
@@ -113,6 +117,8 @@ class MonitorWindow(Adw.ApplicationWindow):
             self.apps.reload()
         elif name == "limpeza":
             self.cleanup.reload()
+        elif name == "pecas":
+            self.hardware.reload()
         elif name == "recursos":
             self.dashboard.refresh()
         elif name == "disco" and self.storage.result:
@@ -127,6 +133,8 @@ class MonitorWindow(Adw.ApplicationWindow):
             self.apps.reload()
         elif name == "limpeza":
             self.cleanup.reload()
+        elif name == "pecas":
+            self.hardware.reload()
 
     def _on_tick(self) -> bool:
         if self.get_mapped() and \

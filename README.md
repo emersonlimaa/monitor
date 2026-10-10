@@ -13,6 +13,15 @@ aplicativo nativo do GNOME.
 memória e swap, cada disco com espaço livre, rede, tempo ligado e os
 programas que mais consomem no momento, com opção de encerrar.
 
+**Componentes** — todas as peças do computador: modelo da placa-mãe e versão
+da BIOS, processador com núcleos, frequências e cache, placas de vídeo (com
+memória e temperatura nas NVIDIA), cada disco com modelo e firmware, os
+monitores com nome, polegadas e resolução nativa lidos do EDID, placas de
+rede, placas de som e os aparelhos USB conectados. Um botão copia a lista
+inteira, útil para pedir suporte ou anunciar a máquina. Os pentes de memória
+(slot, velocidade, fabricante) só aparecem com senha, porque é a única parte
+que exige administrador.
+
 **Aplicativos** — tudo que está instalado por apt, Snap e Flatpak, com nome
 de verdade, ícone e quanto cada um ocupa. Um clique desinstala. Antes de
 remover, o app pergunta ao sistema o que sairia junto e mostra em português:
@@ -96,12 +105,25 @@ com `.git`, `package.json`, `Cargo.toml` e afins vira "projeto de
 programação"; `node_modules`, `.venv`, `build`, `.gradle` e companhia viram
 "cache e build"; `steamapps`, `.wine`, `lutris` viram "jogos".
 
+## De onde vêm as informações de hardware
+
+Tudo de `/sys` e `/proc`, sem `lspci`, `lsusb` nem senha. Os códigos numéricos
+de fabricante e produto são traduzidos pelas bases que o próprio sistema já
+traz (`pci.ids`, `usb.ids`, `pnp.ids`), e o nome e o tamanho dos monitores
+saem de um leitor de EDID escrito no projeto. A coleta inteira leva cerca de
+40 milissegundos.
+
+A exceção é a memória: nenhum arquivo do kernel descreve os pentes, só o
+`dmidecode` lendo a tabela SMBIOS, que exige administrador. Por isso essa
+parte fica atrás de um botão e passa pelo mesmo auxiliar privilegiado.
+
 ## Organização do código
 
 ```
 src/monitor_recursos/
 ├── core/        regras e coleta, sem nada de interface
 │   ├── sysinfo.py     /proc e /sys: CPU, memória, discos, rede, processos
+│   ├── hardware.py    inventário das peças, pci.ids/usb.ids/pnp.ids e EDID
 │   ├── scanner.py     varredura paralela e classificação por tipo
 │   ├── packages.py    inventário apt/Snap/Flatpak e simulação de remoção
 │   ├── cleanup.py     itens recuperáveis e apagamento seguro

@@ -9,7 +9,9 @@
   <summary xml:lang="en">System resources, disk usage and app uninstaller</summary>
   <description>
     <p>
-      Mostra em tempo real o uso de processador, memória, discos e rede; diz
+      Lista as peças do computador (placa-mãe, BIOS, processador, placas de
+      vídeo, discos, monitores, rede, som e USB); mostra em tempo real o uso
+      de processador, memória, discos e rede; diz
       qual porcentagem do disco é vídeo, música, documento, projeto de
       programação, jogo ou cache; e desinstala programas do apt, Snap e
       Flatpak sem abrir o terminal.

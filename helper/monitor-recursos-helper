@@ -370,6 +370,25 @@ def cmd_remove_paths(args: list[str]) -> None:
     finish()
 
 
+def cmd_memoria(_args: list[str]) -> None:
+    """Lê os slots de memória (só o dmidecode enxerga isso)."""
+    import json
+
+    from monitor_recursos.core import hardware as hw
+
+    if not shutil.which("dmidecode"):
+        fail("O sistema não tem a ferramenta que lê os slots de memória.")
+    status("Lendo os pentes de memória…")
+    progress(-1)
+    proc = subprocess.run(["dmidecode", "-t", "17"], capture_output=True,
+                          text=True, env=env(), errors="replace")
+    if proc.returncode != 0:
+        fail("Não foi possível ler os slots de memória.")
+    out("R", json.dumps(hw.parse_dmidecode_memory(proc.stdout)))
+    progress(1.0)
+    finish()
+
+
 def cmd_scan(args: list[str]) -> None:
     """Varre uma pasta com permissão total e devolve o resultado em JSON."""
     if len(args) < 1:
@@ -407,6 +426,7 @@ COMMANDS = {
     "limpar-pastas": cmd_remove_paths,
     "otimizar-ssd": cmd_trim,
     "varrer": cmd_scan,
+    "memoria": cmd_memoria,
 }
 
 
