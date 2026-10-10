@@ -1,0 +1,432 @@
+#!/usr/bin/python3 -I
+"""Auxiliar privilegiado do Monitor de Recursos.
+
+Executado via pkexec. Faz o trabalho que exige administrador (remover
+pacotes, limpar caches do sistema, varrer pastas protegidas) e devolve
+apenas mensagens prontas para exibição, uma por linha:
+
+    S|texto        situação atual, em português
+    P|0.42         progresso de 0 a 1 (ou -1 para indeterminado)
+    E|texto        erro
+    R|{json}       resultado estruturado
+    F|codigo       fim
+
+Nunca confia no que o programa gráfico mandou: revalida nomes de pacotes
+e a lista de itens protegidos antes de executar qualquer coisa.
+"""
+
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+HERE = os.path.realpath(__file__)
+_AQUI = os.path.dirname(HERE)                      # .../libexec/monitor-recursos
+_PREFIXO = os.path.dirname(os.path.dirname(_AQUI))  # .../usr
+_CANDIDATOS = (
+    "/usr/lib/monitor-recursos",                            # instalado
+    os.path.join(_PREFIXO, "lib", "monitor-recursos"),      # outro prefixo
+    os.path.join(os.path.dirname(_AQUI), "src"),            # código-fonte
+)
+for LIB in _CANDIDATOS:
+    if os.path.isfile(os.path.join(LIB, "monitor_recursos", "__init__.py")):
+        sys.path.insert(0, LIB)
+        break
+else:
+    sys.stdout.write("E|Instalação incompleta: módulo do aplicativo não encontrado.\nF|1\n")
+    sys.exit(1)
+
+from monitor_recursos.core import packages as pk  # noqa: E402
+from monitor_recursos.core import scanner as sc   # noqa: E402
+
+NAME_RE = re.compile(r"^[a-z0-9][a-z0-9+._-]*(:[a-z0-9-]+)?$")
+SNAP_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+FLATPAK_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+DRY = "--simular" in sys.argv or os.geteuid() != 0
+
+
+def out(prefix: str, text: str = "") -> None:
+    sys.stdout.write(f"{prefix}|{text}\n")
+    sys.stdout.flush()
+
+
+def status(text: str) -> None:
+    out("S", text)
+
+
+def progress(value: float) -> None:
+    out("P", f"{value:.4f}")
+
+
+def fail(text: str, code: int = 1) -> "NoReturn":
+    out("E", text)
+    out("F", str(code))
+    sys.exit(code)
+
+
+def finish(code: int = 0) -> "NoReturn":
+    out("F", str(code))
+    sys.exit(code)
+
+
+def env() -> dict:
+    e = dict(os.environ)
+    e.update(LC_ALL="C", LANG="C", DEBIAN_FRONTEND="noninteractive",
+             DEBIAN_PRIORITY="critical", PATH="/usr/sbin:/usr/bin:/sbin:/bin")
+    return e
+
+
+def stream(argv: list[str], translate) -> int:
+    """Roda um comando e repassa só mensagens traduzidas."""
+    if DRY:
+        status("Modo de simulação: nada será alterado.")
+    try:
+        proc = subprocess.Popen(
+            argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL, text=True, bufsize=1,
+            errors="replace", env=env(),
+        )
+    except OSError as exc:
+        fail(f"Não foi possível iniciar a operação ({exc.strerror}).")
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        translate(line.rstrip("\n"))
+    return proc.wait()
+
+
+# ------------------------------------------------------------------ apt ------
+
+_APT_PT = (
+    (re.compile(r"^Removing ([^ ]+)"), "Removendo {0}…"),
+    (re.compile(r"^Purging configuration files for ([^ ]+)"),
+     "Apagando configurações de {0}…"),
+    (re.compile(r"^Unpacking ([^ ]+)"), "Preparando {0}…"),
+    (re.compile(r"^Setting up ([^ ]+)"), "Configurando {0}…"),
+    (re.compile(r"^Processing triggers for ([^ ]+)"), "Atualizando {0}…"),
+    (re.compile(r"^\(Reading database"), "Lendo a lista de arquivos…"),
+    (re.compile(r"^Del(?:eting)? "), "Apagando arquivos baixados…"),
+)
+
+
+def apt_translator(total_hint: int = 0):
+    seen = {"n": 0}
+
+    def translate(line: str) -> None:
+        if line.startswith(("pmstatus:", "dlstatus:")):
+            parts = line.split(":", 3)
+            if len(parts) == 4:
+                try:
+                    progress(max(0.0, min(1.0, float(parts[2]) / 100.0)))
+                except ValueError:
+                    pass
+                msg = parts[3].strip()
+                for rx, template in _APT_PT:
+                    m = rx.match(msg)
+                    if m:
+                        status(template.format(*m.groups()))
+                        return
+                if msg and not msg.startswith(("Running", "Installing")):
+                    status(msg if msg.endswith("…") else f"{msg}…")
+            return
+        if line.startswith(("E:", "dpkg: error")):
+            out("E", line.split(":", 1)[-1].strip())
+            return
+        for rx, template in _APT_PT:
+            m = rx.match(line)
+            if m:
+                seen["n"] += 1
+                if total_hint:
+                    progress(min(0.98, seen["n"] / max(total_hint, 1)))
+                status(template.format(*m.groups()))
+                return
+
+    return translate
+
+
+def validate_apt(names: list[str]) -> list[str]:
+    clean = []
+    installed = pk.apt_packages()
+    for raw in names:
+        name = raw.strip()
+        if not NAME_RE.match(name):
+            fail("Nome de pacote inválido.")
+        base = name.split(":", 1)[0]
+        if pk.is_protected_apt(base):
+            fail(f"“{base}” faz parte do sistema e não pode ser removido.")
+        info = installed.get(base)
+        if info is None:
+            fail(f"“{base}” não está instalado.")
+        if info.essential or info.priority in ("required", "important"):
+            fail(f"“{base}” é essencial para o sistema e foi mantido.")
+        clean.append(base)
+    return clean
+
+
+def cmd_remove_apt(args: list[str]) -> None:
+    pkgs = validate_apt(args)
+    status("Verificando o que será removido…")
+    progress(-1)
+    plan_argv = ["apt-get", "-s", "remove", "--purge", "--auto-remove"] + pkgs
+    rc = subprocess.run(plan_argv, capture_output=True, text=True,
+                        env=env(), errors="replace")
+    victims = [m.group(2).split(":")[0] for m in
+               (re.match(r"^(Remv|Purg)\s+(\S+)", ln) for ln in rc.stdout.splitlines())
+               if m]
+    for v in victims:
+        if pk.is_protected_apt(v):
+            fail(f"A remoção foi cancelada: ela levaria “{v}”, que o sistema precisa.")
+    if not victims:
+        fail("Nada a remover.")
+    status(f"Removendo {len(victims)} item(ns)…")
+    argv = ["apt-get", "-y", "--purge", "--auto-remove",
+            "-o", "APT::Status-Fd=1", "-o", "Dpkg::Use-Pty=0",
+            "-o", "Dpkg::Options::=--force-confdef",
+            "remove"] + pkgs
+    if DRY:
+        argv.insert(1, "-s")
+    code = stream(argv, apt_translator(len(victims)))
+    if code != 0:
+        fail("A remoção não foi concluída.", code)
+    progress(1.0)
+    out("R", f'{{"removidos": {len(victims)}}}')
+    status("Concluído.")
+    finish()
+
+
+def cmd_autoremove(_args: list[str]) -> None:
+    status("Procurando dependências sem uso…")
+    progress(-1)
+    argv = ["apt-get", "-y", "--purge", "-o", "APT::Status-Fd=1",
+            "-o", "Dpkg::Use-Pty=0", "autoremove"]
+    if DRY:
+        argv.insert(1, "-s")
+    code = stream(argv, apt_translator())
+    if code != 0:
+        fail("Não foi possível concluir a limpeza.", code)
+    progress(1.0)
+    finish()
+
+
+def cmd_clean_apt(_args: list[str]) -> None:
+    status("Apagando pacotes baixados…")
+    progress(-1)
+    argv = ["apt-get", "clean"]
+    if DRY:
+        status("Simulação: o cache seria apagado.")
+        progress(1.0)
+        finish()
+    code = stream(argv, apt_translator())
+    progress(1.0)
+    finish(0 if code == 0 else code)
+
+
+# ----------------------------------------------------------------- snap ------
+
+
+def cmd_remove_snap(args: list[str]) -> None:
+    if len(args) != 1 or not SNAP_RE.match(args[0]):
+        fail("Nome de snap inválido.")
+    name = args[0]
+    if pk._matches(name, pk.PROTECTED_SNAPS):
+        fail(f"“{name}” é um componente de base do sistema e foi mantido.")
+    status(f"Removendo {name}…")
+    progress(-1)
+    argv = ["snap", "remove", "--purge", name]
+    if DRY:
+        status("Simulação: o snap seria removido.")
+        progress(1.0)
+        finish()
+
+    def translate(line: str) -> None:
+        if line.startswith("error:"):
+            out("E", line[6:].strip())
+        elif line.strip():
+            status(f"{name}: preparando remoção…")
+
+    code = stream(argv, translate)
+    if code != 0:
+        fail("O snap não pôde ser removido.", code)
+    progress(1.0)
+    finish()
+
+
+def cmd_clean_snaps(_args: list[str]) -> None:
+    status("Procurando versões antigas…")
+    progress(-1)
+    rc = subprocess.run(["snap", "list", "--all"], capture_output=True,
+                        text=True, env=env(), errors="replace")
+    old = []
+    for line in rc.stdout.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 6 and "disabled" in parts[-1]:
+            if SNAP_RE.match(parts[0]) and parts[2].isdigit():
+                old.append((parts[0], parts[2]))
+    if not old:
+        status("Nenhuma versão antiga encontrada.")
+        progress(1.0)
+        finish()
+    for i, (name, rev) in enumerate(old, 1):
+        status(f"Apagando versão antiga de {name} ({i} de {len(old)})…")
+        progress(i / len(old))
+        if not DRY:
+            subprocess.run(["snap", "remove", name, "--revision", rev],
+                           capture_output=True, env=env())
+    progress(1.0)
+    finish()
+
+
+# -------------------------------------------------------------- flatpak ------
+
+
+def cmd_remove_flatpak(args: list[str]) -> None:
+    if len(args) != 1 or not FLATPAK_RE.match(args[0]):
+        fail("Identificador de Flatpak inválido.")
+    status(f"Removendo {args[0]}…")
+    progress(-1)
+    if DRY:
+        status("Simulação: o Flatpak seria removido.")
+        progress(1.0)
+        finish()
+    code = stream(["flatpak", "uninstall", "-y", "--delete-data", args[0]],
+                  lambda ln: None)
+    if code != 0:
+        fail("O aplicativo Flatpak não pôde ser removido.", code)
+    progress(1.0)
+    finish()
+
+
+def cmd_clean_flatpak(_args: list[str]) -> None:
+    status("Removendo bibliotecas Flatpak sem uso…")
+    progress(-1)
+    if DRY:
+        progress(1.0)
+        finish()
+    code = stream(["flatpak", "uninstall", "-y", "--unused"], lambda ln: None)
+    progress(1.0)
+    finish(0 if code == 0 else code)
+
+
+# ------------------------------------------------------- sistema / disco -----
+
+
+def cmd_clean_journal(_args: list[str]) -> None:
+    status("Compactando registros do sistema…")
+    progress(-1)
+    if DRY:
+        progress(1.0)
+        finish()
+    code = stream(["journalctl", "--vacuum-size=200M"], lambda ln: None)
+    progress(1.0)
+    finish(0 if code == 0 else code)
+
+
+def cmd_trim(_args: list[str]) -> None:
+    status("Otimizando o SSD…")
+    progress(-1)
+    if DRY:
+        progress(1.0)
+        finish()
+    freed = []
+
+    def translate(line: str) -> None:
+        m = re.search(r"^(\S+).*\(([\d,.]+ [KMGT]?i?B)\)", line)
+        if m:
+            freed.append(m.group(0))
+            status(f"Otimizado: {m.group(1)}")
+
+    code = stream(["fstrim", "-a", "-v"], translate)
+    progress(1.0)
+    finish(0 if code == 0 else code)
+
+
+def cmd_remove_paths(args: list[str]) -> None:
+    """Apaga pastas de cache indicadas, com conferência de segurança."""
+    allowed_roots = ("/var/cache/", "/var/tmp/", "/var/log/journal/",
+                     "/var/lib/snapd/cache/", "/var/crash/", "/root/.cache/")
+    victims = []
+    for raw in args:
+        path = os.path.realpath(raw)
+        if not path.startswith(allowed_roots):
+            fail("Caminho fora das pastas de cache permitidas.")
+        if os.path.islink(path) or not os.path.isdir(path):
+            continue
+        victims.append(path)
+    for i, path in enumerate(victims, 1):
+        status(f"Limpando {os.path.basename(path)}…")
+        progress(i / max(len(victims), 1))
+        if DRY:
+            continue
+        for entry in os.scandir(path):
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    shutil.rmtree(entry.path, ignore_errors=True)
+                else:
+                    os.unlink(entry.path)
+            except OSError:
+                pass
+    progress(1.0)
+    finish()
+
+
+def cmd_scan(args: list[str]) -> None:
+    """Varre uma pasta com permissão total e devolve o resultado em JSON."""
+    if len(args) < 1:
+        fail("Pasta não informada.")
+    root = os.path.realpath(args[0])
+    if not os.path.isdir(root):
+        fail("Pasta inexistente.")
+    status("Analisando o disco…")
+    last = [0.0]
+
+    def on_progress(files: int, size: int, path: str) -> None:
+        import time
+        now = time.monotonic()
+        if now - last[0] < 0.25:
+            return
+        last[0] = now
+        out("S", f"{files} arquivos · {path[:72]}")
+        out("P", "-1")
+
+    result = sc.scan(root, same_filesystem=True, progress=on_progress)
+    out("R", result.to_json())
+    progress(1.0)
+    finish()
+
+
+COMMANDS = {
+    "remover-apt": cmd_remove_apt,
+    "remover-snap": cmd_remove_snap,
+    "remover-flatpak": cmd_remove_flatpak,
+    "autoremover": cmd_autoremove,
+    "limpar-cache-apt": cmd_clean_apt,
+    "limpar-snaps-antigos": cmd_clean_snaps,
+    "limpar-flatpak": cmd_clean_flatpak,
+    "limpar-registros": cmd_clean_journal,
+    "limpar-pastas": cmd_remove_paths,
+    "otimizar-ssd": cmd_trim,
+    "varrer": cmd_scan,
+}
+
+
+def main() -> None:
+    args = [a for a in sys.argv[1:] if a != "--simular"]
+    if not args:
+        fail("Operação não informada.")
+    action = args[0]
+    handler = COMMANDS.get(action)
+    if handler is None:
+        fail("Operação desconhecida.")
+    if os.geteuid() != 0 and not DRY:
+        fail("Esta operação precisa de permissão de administrador.")
+    try:
+        handler(args[1:])
+    except SystemExit:
+        raise
+    except Exception as exc:  # pragma: no cover - rede de segurança
+        fail(f"Erro inesperado: {exc}")
+
+
+if __name__ == "__main__":
+    main()

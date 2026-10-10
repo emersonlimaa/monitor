@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Monitor de Recursos
+Name[en]=Resource Monitor
+GenericName=Monitor do sistema
+GenericName[en]=System monitor
+Comment=Veja os recursos do computador, o que ocupa o disco e desinstale programas
+Comment[en]=Watch system resources, see what fills the disk and uninstall apps
+Exec=monitor-recursos
+Icon=io.github.merz.MonitorRecursos
+Terminal=false
+Categories=System;Monitor;
+Keywords=monitor;recursos;memória;cpu;disco;espaço;desinstalar;limpeza;ssd;system;resources;uninstall;cleanup;
+StartupNotify=true
+StartupWMClass=io.github.merz.MonitorRecursos
+X-GNOME-UsesNotifications=false

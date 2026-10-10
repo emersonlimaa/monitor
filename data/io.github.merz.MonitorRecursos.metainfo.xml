@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.merz.MonitorRecursos</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Monitor de Recursos</name>
+  <name xml:lang="en">Resource Monitor</name>
+  <summary>Recursos do sistema, uso do disco e desinstalação de programas</summary>
+  <summary xml:lang="en">System resources, disk usage and app uninstaller</summary>
+  <description>
+    <p>
+      Mostra em tempo real o uso de processador, memória, discos e rede; diz
+      qual porcentagem do disco é vídeo, música, documento, projeto de
+      programação, jogo ou cache; e desinstala programas do apt, Snap e
+      Flatpak sem abrir o terminal.
+    </p>
+    <p>
+      A desinstalação é feita por um auxiliar privilegiado separado, que
+      confere a lista de pacotes protegidos antes de remover qualquer coisa.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.merz.MonitorRecursos.desktop</launchable>
+  <categories>
+    <category>System</category>
+    <category>Monitor</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="1.0.0" date="2026-10-10"/>
+  </releases>
+</component>

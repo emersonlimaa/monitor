@@ -1,0 +1,4 @@
+#!/bin/sh
+# Executa o aplicativo a partir do código-fonte, sem instalar.
+here=$(dirname "$(readlink -f "$0")")
+PYTHONPATH="$here/src:$PYTHONPATH" exec python3 -m monitor_recursos "$@"
